@@ -1,0 +1,11 @@
+firebase-functions
+firebase-admin
+functions-framework
+openai
+pinecone-client
+google-cloud-firestore
+python-dotenv
+langchain
+langchain-openai
+langchain-community
+langgraph
