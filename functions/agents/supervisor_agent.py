@@ -11,8 +11,6 @@ from lib.types import prebuilt_llm, State, VALID_AGENT_REQUESTS, AgentRequest
 from firebase_functions import logger
 from .human_interaction_agent import human_interaction_node
 from .data_agent import data_agent_node
-from .summary_agent import summary_agent_node
-import json
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from pydantic import Field
 
@@ -30,7 +28,10 @@ system_prompt = """You are the workflow coordinator for PartSelect's customer se
 You must accurately and quickly triage the conversation to the correct agent. Keep the number of steps to a minimum.
 Your role is to analyze conversations and determine which specialized agent should handle the next step:
 
+___ EVERY TIME YOU ANSWER A PROMPT, YOU MUST THINK ABOUT ALL THE STEPS YOU WILL TAKE TO SOLVE THE PROBLEM. ____
+
 1. validation_agent: Validates part/model numbers and checks compatibility. There is no need to validate data you got from other agents, and only validate individual parts and models if the user wants to.
+    Only call this for compatibility if you have both a part and model number. If you think you need to validate a part or model, ask the user for the part or model number.
 2. repair_agent: Provides repair solutions and part recommendations. Use this agent when the user mentions a problem and you need to provide a solution.
 3. data_agent: Fetches product data and specifications. You cannot request this agent unless another agent has requested it. You cannot request this agent individually.
 4. blog_agent: Searches blog posts for general information and tips. Use this agent when the user asks general questions about appliance maintenance, common issues, or best practices for dishwasher and refrigerator repair.
@@ -59,28 +60,34 @@ def validate_agent_request(request: AgentRequest) -> bool:
 
 def analyze_conversation(messages: List[Dict[str, str]], current_agent: str) -> Router:
     """Analyze the conversation to determine the next step."""
+    # Keep only the last N messages to prevent context overflow
+    MAX_MESSAGES = 5
+    recent_messages = messages[-MAX_MESSAGES:] if len(messages) > MAX_MESSAGES else messages
+    
     # Convert messages to LangChain format
     formatted_messages = []
-    for msg in messages:
+    for msg in recent_messages:
         if isinstance(msg, (SystemMessage, HumanMessage, AIMessage)):
             formatted_messages.append(msg)
         else:
+            # Truncate very long messages
+            content = msg["content"]
+
+                
             if msg["role"] == "system":
-                formatted_messages.append(SystemMessage(content=msg["content"]))
+                formatted_messages.append(SystemMessage(content=content))
             elif msg["role"] == "user":
-                formatted_messages.append(HumanMessage(content=msg["content"]))
+                formatted_messages.append(HumanMessage(content=content))
             elif msg["role"] == "assistant":
-                formatted_messages.append(AIMessage(content=msg["content"], name=msg.get("name")))
+                formatted_messages.append(AIMessage(content=content, name=msg.get("name")))
 
     analysis_messages = [
         SystemMessage(content=system_prompt)
-    ] + formatted_messages + [HumanMessage(content="Please respond with a JSON object with the following structure: {next_agent: string, request_type: string, request_info: object}. Avoid \
-        calling the {current_agent} agent again as next_agent unless you want to use another tool. We want to emphasize speed and efficiency.")]
+    ] + formatted_messages + [HumanMessage(content="Please respond with a JSON : {next_agent: string, request_type: string, request_info: object}. Avoid \
+        calling the {current_agent} agent again as next_agent unless you want to use another tool. We want to emphasize speed and efficiency, so minimize the number of steps by listing out the steps you will take to solve the problem.")]
     logger.debug(f"Analysis messages: {analysis_messages}")
     # Use structured output to ensure we get a dictionary
     response = prebuilt_llm.with_structured_output(Router).invoke(analysis_messages)
-    logger.debug(f"Response from analyze_conversation: {response}")
-    
     return response
 
 def supervisor_node(state: State) -> Command[str]:
@@ -128,6 +135,8 @@ def supervisor_node(state: State) -> Command[str]:
         analysis = analyze_conversation(state["messages"], current_agent)
         logger.debug(f"Analysis: {analysis}")
         next_agent = analysis["next_agent"]
+        if next_agent == current_agent:
+            next_agent = "human_interaction"
         
         return Command(
             goto=next_agent,

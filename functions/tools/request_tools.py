@@ -1,3 +1,4 @@
+import re
 import requests
 from firebase_functions import logger
 
@@ -22,12 +23,19 @@ headers = {
             "sec-ch-ua-platform": "\"macOS\""
         }
 
+def trim_html(html: str) -> str:
+    """Trim the HTML by cutting out unneeded symbols. We dont need tags, scripts, or other unneeded symbols."""
+    # .replace(/<[^>]*>/g, ' ')
+    remove_tags = re.sub(r'<[^>]*>', '', html)
+    remove_whitespace = re.sub(r'\s+', ' ', remove_tags)
+    return remove_whitespace
+
 def request_page(url: str) -> str:
     """Request a page from the PartSelect website"""
     logger.info(f"Requesting page from {url}")
     response = requests.get(url, headers=headers, allow_redirects=True)
     logger.info(response.text)
-    return response.text
+    return trim_html(response.text)
 
 request_page_tool = Tool(
         name="request_page",
@@ -51,7 +59,7 @@ def use_search_feature(search_term: str) -> str:
     url = f"https://www.partselect.com/api/search/?searchterm={search_term}"
     response = request_page(url)
     logger.info(response)
-    return response
+    return trim_html(response)
 
 use_search_feature_tool = Tool(
         name="use_search_feature",
@@ -104,7 +112,7 @@ def search_instant_repairman_models(model_number: str) -> str:
     url = f"https://www.partselect.com/instant-repairman/?handler=SearchModels&ModelNum={model_number}"
     response = request_page(url)
     logger.info(response)
-    return response
+    return trim_html(response)
 
 search_instant_repairman_models_tool = Tool(
         name="search_instant_repairman_models",
@@ -126,7 +134,7 @@ def get_instant_repairman_parts(model_problem_id: str) -> str:
     url = f"https://www.partselect.com/instant-repairman/?handler=GetpartsList&ModelMasterID={model_id}&ProblemID={problem_id}"
     response = request_page(url)
     logger.info(response)
-    return response
+    return trim_html(response)
 
 get_instant_repairman_parts_tool = Tool(
         name="get_instant_repairman_parts",
@@ -151,7 +159,7 @@ def search_blog_posts(search_term: str) -> str:
     url = f"https://www.partselect.com/content/blog/search/{search_term}/"
     response = request_page(url)
     logger.info(response)
-    return response
+    return trim_html(response)
 
 search_blog_posts_tool = Tool(
         name="search_blog_posts",
@@ -173,7 +181,7 @@ def general_dishwasher_repair_tips() -> str:
     url = f"https://https://www.partselect.com/Repair/Dishwasher/"
     response = request_page(url)
     logger.info(response)
-    return response
+    return trim_html(response)
 
 general_dishwasher_repair_tips_tool = Tool(
         name="general_dishwasher_repair_tips",
@@ -188,7 +196,7 @@ def general_refrigerator_repair_tips() -> str:
     url = f"https://https://www.partselect.com/Repair/Refrigerator/"
     response = request_page(url)
     logger.info(response)
-    return response
+    return trim_html(response)
 
 general_refrigerator_repair_tips_tool = Tool(
         name="general_refrigerator_repair_tips",

@@ -13,7 +13,7 @@ __all__ = ["process_LLM_query"]
         cors_origins=["*"],
         cors_methods=["GET", "POST", "OPTIONS"]
     ),
-    timeout_sec=30
+    timeout_sec=60
 )
 # input:
 # {

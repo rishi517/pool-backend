@@ -4,7 +4,7 @@ from lib.types import prebuilt_llm, State, AgentRequest, BlogInfo
 from firebase_functions import logger
 from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
-from tools.request_tools import search_blog_posts_tool
+from tools.request_tools import search_blog_posts_tool, request_page_tool
 
 system_prompt = """You are the blog search agent for PartSelect's customer service system. Your role is to:
 1. Search through PartSelect's blog posts for relevant information based on user queries
@@ -47,7 +47,7 @@ Focus only on Refrigerator and Dishwasher related information from the blog post
 blog_agent = create_react_agent(
     model=prebuilt_llm,
     state_modifier=system_prompt,
-    tools=[search_blog_posts_tool],
+    tools=[search_blog_posts_tool, request_page_tool],
     response_format=BlogInfo
 )
 
