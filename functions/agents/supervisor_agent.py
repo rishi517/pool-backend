@@ -4,10 +4,10 @@ from typing_extensions import TypedDict
 from langgraph.graph import END, StateGraph, START
 from langgraph.types import Command
 
-from functions.agents.blog_agent import blog_agent_node
+from .blog_agent import blog_agent_node
 from .repair_agent import repair_agent_node
 from .validation_agent import validation_agent_node
-from .types import prebuilt_llm, State, VALID_AGENT_REQUESTS, AgentRequest
+from lib.types import prebuilt_llm, State, VALID_AGENT_REQUESTS, AgentRequest
 from firebase_functions import logger
 from .human_interaction_agent import human_interaction_node
 from .data_agent import data_agent_node
@@ -26,9 +26,11 @@ class Router(TypedDict):
     request_type: Optional[str] = Field(default="analyze", description="The type of request being made")
     request_info: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Information for the target agent to process the request")
 
-system_prompt = """You are the workflow coordinator for PartSelect's customer service system. Your role is to analyze conversations and determine which specialized agent should handle the next step:
+system_prompt = """You are the workflow coordinator for PartSelect's customer service system. 
+You must accurately and quickly triage the conversation to the correct agent. Keep the number of steps to a minimum.
+Your role is to analyze conversations and determine which specialized agent should handle the next step:
 
-1. validation_agent: Validates part/model numbers and checks compatibility
+1. validation_agent: Validates part/model numbers and checks compatibility. There is no need to validate data you got from other agents, and only validate individual parts and models if the user wants to.
 2. repair_agent: Provides repair solutions and part recommendations. Use this agent when the user mentions a problem and you need to provide a solution.
 3. data_agent: Fetches product data and specifications. You cannot request this agent unless another agent has requested it. You cannot request this agent individually.
 4. blog_agent: Searches blog posts for general information and tips. Use this agent when the user asks general questions about appliance maintenance, common issues, or best practices for dishwasher and refrigerator repair.
@@ -55,7 +57,7 @@ def validate_agent_request(request: AgentRequest) -> bool:
         return False
     return request["target_agent"] in VALID_AGENT_REQUESTS[request["requesting_agent"]]
 
-def analyze_conversation(messages: List[Dict[str, str]]) -> Router:
+def analyze_conversation(messages: List[Dict[str, str]], current_agent: str) -> Router:
     """Analyze the conversation to determine the next step."""
     # Convert messages to LangChain format
     formatted_messages = []
@@ -72,7 +74,8 @@ def analyze_conversation(messages: List[Dict[str, str]]) -> Router:
 
     analysis_messages = [
         SystemMessage(content=system_prompt)
-    ] + formatted_messages
+    ] + formatted_messages + [HumanMessage(content="Please respond with a JSON object with the following structure: {next_agent: string, request_type: string, request_info: object}. Avoid \
+        calling the {current_agent} agent again as next_agent unless you want to use another tool. We want to emphasize speed and efficiency.")]
     logger.debug(f"Analysis messages: {analysis_messages}")
     # Use structured output to ensure we get a dictionary
     response = prebuilt_llm.with_structured_output(Router).invoke(analysis_messages)
@@ -122,7 +125,7 @@ def supervisor_node(state: State) -> Command[str]:
             )
         
         # No pending requests, analyze conversation for next step
-        analysis = analyze_conversation(state["messages"])
+        analysis = analyze_conversation(state["messages"], current_agent)
         logger.debug(f"Analysis: {analysis}")
         next_agent = analysis["next_agent"]
         

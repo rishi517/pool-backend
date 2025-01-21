@@ -20,7 +20,6 @@ VALID_AGENT_REQUESTS = {
     "blog_agent": ["human_interaction", "data_agent"]
 }
 
-
     
 class MessageSummary(TypedDict):
     part_numbers: Optional[List[str]] = Field(..., description="A list of part numbers that have been mentioned")
@@ -49,7 +48,7 @@ class AgentResponse(TypedDict):
     response_data: Dict[str, Any] = Field(..., description="The response data")
 
 class ValidationInfo(TypedDict):
-    is_valid_or_compatible: bool = Field(..., description="Whether the item is valid or compatible")
+    answer: str = Field(..., description="The answer to the validation question")
     found_item: Optional[str] = Field(..., description="a description of the item found, only set if we are searching for a part or model")
     item_suggestions: Optional[List[str]] = Field(..., description="A list of suggestions for the user to provide a part number or model number if the item was not found")
     info_needed: Optional[AgentRequest] = Field(..., description="Set to None if all information is provided, otherwise set to the request needed")

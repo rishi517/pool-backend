@@ -2,9 +2,9 @@ from langchain.schema import HumanMessage, SystemMessage, AIMessage
 from firebase_functions import logger
 from dotenv import load_dotenv
 from agents.supervisor_agent import build_supervisor_graph
-from agents.types import State
+from lib.types import State
 import json
-from agents.agent_utils import convert_dict_to_langchain_messages
+from lib.agent_utils import convert_dict_to_langchain_messages
 load_dotenv()
 
 

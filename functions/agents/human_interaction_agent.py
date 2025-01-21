@@ -1,6 +1,7 @@
 from typing import Dict, Any, List
 from langgraph.types import Command
-from .types import prebuilt_llm, State
+from langgraph.graph import END
+from lib.types import prebuilt_llm, State
 from firebase_functions import logger
 from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
@@ -60,7 +61,7 @@ def human_interaction_node(state: State) -> Command[str]:
         logger.debug(f"Response in human_interaction_node: {response}")
         # Add our response to the messages, keeping only essential fields
         return Command(
-            goto="supervisor",
+            goto=END,
             update={
                 "messages": response["messages"],
                 "pending_request": None

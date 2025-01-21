@@ -1,13 +1,13 @@
 from typing import Dict, Any, List
 from langgraph.types import Command
-from .types import AgentRequest, prebuilt_llm, State, ValidationInfo
+from lib.types import AgentRequest, prebuilt_llm, State, ValidationInfo
 from firebase_functions import logger
 from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import AIMessage
 from tools.request_tools import check_part_compatibility_tool, use_search_feature_tool
 system_prompt = """
 Your role is to validate any information provided by the user. You must ensure that a model exists, and if not, find suggestions for the user to provide a model number.
-Similarly, you must ensure that a part number exists, and if not, find suggestions for the user to provide a part number.
+Similarly, you must ensure that a part number exists, and if not, find suggestions for the user to provide a part number. There is no need to validate data you got from other agents.
 1) Only check for compatibility of a part with a model if the user specifically asks you to.
 2) Use your tools (use_search_feature_tool and check_part_compatibility_tool) directly to perform these tasks.
 
@@ -17,9 +17,9 @@ REQUESTABLE AGENTS:
 
 Output must be structured exactly as:
 {
-    is_valid_or_compatible: true/false,
-    found_item: a description of the item found, only set if we are searching for a part or model,
-    item_suggestions: ["list", "of", "suggestions"]
+    answer: "true" or "false" or "a description of the result",
+    found_item: a detailed description of the item found, only set if we are searching for a part or model,
+    item_suggestions: ["list", "of","detailed", "suggestions"]
     "info_needed": an AgentRequest object. If you need information from the user, request it from the human_interaction agent.
 }
 
@@ -42,7 +42,7 @@ Steps:
 
 Output:
 {
-    is_valid_or_compatible: false,
+    answer: "false",
     found_item: null,
     item_suggestions: ["PS11752778"]
     info_needed: {

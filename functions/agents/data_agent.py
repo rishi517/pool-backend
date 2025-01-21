@@ -1,6 +1,6 @@
 from typing import Dict, Any, List
 from langgraph.types import Command
-from .types import AgentRequest, prebuilt_llm, State
+from lib.types import AgentRequest, prebuilt_llm, State
 from firebase_functions import logger
 from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, BaseMessage
