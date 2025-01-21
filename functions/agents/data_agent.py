@@ -1,9 +1,8 @@
 from typing import Dict, Any, List
 from langgraph.types import Command
-from .types import prebuilt_llm, State
+from .types import AgentRequest, prebuilt_llm, State
 from firebase_functions import logger
 from langgraph.prebuilt import create_react_agent
-from .agent_utils import process_agent_node, convert_dict_to_langchain_messages
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, BaseMessage
 from tools.request_tools import (
     use_search_feature_tool,
@@ -12,17 +11,19 @@ from tools.request_tools import (
     get_instant_repairman_parts_tool,
     search_blog_posts_tool,
     general_dishwasher_repair_tips_tool,
-    general_refrigerator_repair_tips_tool
+    general_refrigerator_repair_tips_tool,
+    request_page_tool
 )
 
 system_message = """You are a data extraction agent for PartSelect's customer service system. Your role is to interface with the PartSelect website and provide structured data to other agents.
 
 Your capabilities include:
-1. Searching for parts and models using the search feature
-2. Checking part compatibility with specific models
-3. Finding common problems and repair solutions for models
-4. Getting repair tips from blog posts and general guides
-5. Extracting structured data from website responses
+1. Searching for parts and models using the search feature (use_search_feature_tool)
+2. Checking part compatibility with specific models (check_part_compatibility_tool)
+3. Finding common problems and repair solutions for models (search_instant_repairman_models_tool)
+4. Getting repair tips from blog posts and general guides (search_blog_posts_tool, general_dishwasher_repair_tips_tool, general_refrigerator_repair_tips_tool)
+5. Extracting structured data from website responses (request_page_tool)
+
 
 When responding:
 1. Always structure your responses clearly
@@ -46,55 +47,31 @@ data_agent = create_react_agent(
         get_instant_repairman_parts_tool,
         search_blog_posts_tool,
         general_dishwasher_repair_tips_tool,
-        general_refrigerator_repair_tips_tool
+        general_refrigerator_repair_tips_tool,
+        request_page_tool
     ],
 )
 
-def process_data_requests(messages: List[BaseMessage], agent_requests: List[Dict[str, Any]]) -> str:
-    """Process direct requests for data."""
-    request = [req for req in agent_requests if req["target_agent"] == "data_agent"][0]
-    request_messages = messages + [HumanMessage(content=request["request"])]
-    return data_agent.invoke(request_messages)
-
-def process_no_responses(messages: List[BaseMessage]) -> Dict[str, Any]:
-    """Process when there are no direct requests."""
-    # Use LLM to determine what data to fetch and how to structure the response
-    planning_messages = messages + [
-        HumanMessage(content=
-            "What data do we need to fetch from the website based on the conversation? " + 
-            "Respond with a structured plan including which tools to use and in what order.")
-    ]
-    
-    plan = data_agent.invoke(planning_messages)
-    logger.debug(f"Data agent plan: {plan}")
-    
-    # Use LLM to execute the plan and format the response
-    execution_messages = messages + [
-        AIMessage(content=f"Here's my plan: {plan}"),
-        HumanMessage(content="Execute this plan and format the results.")
-    ]
-    
-    return data_agent.invoke(execution_messages)
-
-def data_agent_node(state: State) -> Command[str]:
-    # Process the request and get response
-    result = process_agent_node(
-        state=state,
-        agent_name="data_agent",
-        agent_llm=data_agent,
-        system_message=system_message,
-        process_responses=process_data_requests if state.get("agent_requests") else None,
-        process_no_responses=process_no_responses,
-        default_next_agent="supervisor"
-    )
-    
-    # Always return to supervisor with updated state
+def handle_pending_request(state: State, pending_request: AgentRequest) -> Command[str]:
+    prompt = f"You have a pending request from the {pending_request.get('requesting_agent')} agent. Use the provided tools to provide a response. \
+                      Use the information provided by  {pending_request.get('request_info')}  to respond to the user. Here is the general state of the conversation: {state}\
+                      If a given number is ambigious, ask the user to clarify which number they are referring to."
+    response = data_agent.invoke({"messages": prompt})
+    pending_request = None
     return Command(
         goto="supervisor",
         update={
-            "messages": result.update["messages"],
-            "agent_requests": state.get("agent_requests", []),  # Data agent doesn't create new requests
-            "agent_responses": result.update.get("agent_responses", {})
+            "messages": state["messages"] + [AIMessage(content=str(response))],
+            "pending_request": pending_request
         }
     )
      
+def data_agent_node(state: State) -> Command[str]:
+    try:
+        if state.get("pending_request"):
+            return handle_pending_request(state, state.get("pending_request"))
+        response = data_agent.invoke(state)
+        return Command(goto="supervisor", update={"messages": state["messages"] + [AIMessage(content=str(response))]})
+    except Exception as e:
+        logger.error(f"Error in data_agent_node: {str(e)}")
+        raise

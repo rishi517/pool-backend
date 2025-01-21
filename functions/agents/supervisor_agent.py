@@ -3,6 +3,8 @@ from typing import List, Literal, Dict, Any, Optional
 from typing_extensions import TypedDict
 from langgraph.graph import END, StateGraph, START
 from langgraph.types import Command
+
+from functions.agents.blog_agent import blog_agent_node
 from .repair_agent import repair_agent_node
 from .validation_agent import validation_agent_node
 from .types import prebuilt_llm, State, VALID_AGENT_REQUESTS, AgentRequest
@@ -15,12 +17,12 @@ from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from pydantic import Field
 
 # Define our possible routes
-members = Literal["repair_agent", "validation_agent", "human_interaction", "data_agent", "summary_agent"]
-options = Literal["repair_agent", "validation_agent", "human_interaction", "data_agent", "summary_agent", "end"]
-supervisor_options = Literal["repair_agent", "validation_agent", "human_interaction", "data_agent", "summary_agent", "__end__"]
+members = Literal["repair_agent", "validation_agent", "human_interaction", "data_agent", "blog_agent"]
+options = Literal["repair_agent", "validation_agent", "human_interaction", "data_agent", "blog_agent", "end"]
+supervisor_options = Literal["repair_agent", "validation_agent", "human_interaction", "data_agent", "blog_agent", "__end__"]
 
 class Router(TypedDict):
-    next_agent: Literal["repair_agent", "validation_agent", "human_interaction", "data_agent", "summary_agent", "end"]
+    next_agent: Literal["repair_agent", "validation_agent", "human_interaction", "data_agent", "blog_agent", "end"]
     request_type: Optional[str] = Field(default="analyze", description="The type of request being made")
     request_info: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Information for the target agent to process the request")
 
@@ -28,14 +30,16 @@ system_prompt = """You are the workflow coordinator for PartSelect's customer se
 
 1. validation_agent: Validates part/model numbers and checks compatibility
 2. repair_agent: Provides repair solutions and part recommendations. Use this agent when the user mentions a problem and you need to provide a solution.
-3. data_agent: Fetches product data and specifications
-4. summary_agent: Summarizes conversation history for context. ONLY USE THIS IF THE CONVERSATION IS LONG.
+3. data_agent: Fetches product data and specifications. You cannot request this agent unless another agent has requested it. You cannot request this agent individually.
+4. blog_agent: Searches blog posts for general information and tips. Use this agent when the user asks general questions about appliance maintenance, common issues, or best practices for dishwasher and refrigerator repair.
 5. human_interaction: Communicates directly with the user (MUST be the final step). 
+    Use this agent if you need more information from the user not provided by the other agents. It is better to ask the user for information than to assume which action to take.
 
 Rules:
-1. Use summary agent for long conversations
-2. ALWAYS end with human_interaction for user communication
-3. When analyzing the output of an agent, look for a request. If the request must be fulfilled by the user, route to human_interaction.
+1. ALWAYS end with human_interaction for user communication
+2. When analyzing the output of an agent, look for a request. If the request must be fulfilled by the user, route to human_interaction.
+3. Use blog_agent for general questions that don't require specific model numbers or parts
+4. Use repair_agent when the user has a specific problem that needs fixing
 
 Your response must be a JSON object with:
 {
@@ -141,6 +145,9 @@ def build_supervisor_graph():
     builder.add_node("supervisor", supervisor_node)
     builder.add_node("human_interaction", human_interaction_node)
     builder.add_node("repair_agent", repair_agent_node)
+    builder.add_node("validation_agent", validation_agent_node)
+    builder.add_node("data_agent", data_agent_node)
+    builder.add_node("blog_agent", blog_agent_node)
     # START always goes to supervisor
     builder.add_edge(START, "supervisor")
     

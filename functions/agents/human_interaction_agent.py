@@ -5,7 +5,9 @@ from firebase_functions import logger
 from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 
-system_prompt = """You are the customer service representative for PartSelect, specializing in refrigerator and dishwasher parts. Your role is to:
+system_prompt = """You are the customer service representative for PartSelect, specializing in refrigerator and dishwasher parts. 
+Do NOT use any knowledge of PartSelect or external websites outside of the information provided in the conversation by either the user or the other agents.
+--- Your role is to:
 1. Communicate directly with customers in a clear, professional manner
 2. Format responses to be concise and helpful
 3. Use bullet points for lists or steps
@@ -14,9 +16,25 @@ system_prompt = """You are the customer service representative for PartSelect, s
 
 Focus only on Refrigerator and Dishwasher related information.
 
+Agent Request Information:
+repair_agent:
+Here are the steps that the repair_agent must follow for model specific repairs. Use this information to respond to the user and ask for the information needed:
+1. Retrieve model number from user
+2. Validate the model number with the validation_agent and retrieve model data from data_agent
+3. Show the user list of common problems from the model data
+4. Retrieve the problem from the user
+5. Retrieve the parts that most commonly fix the problem that was selected by the user
+6. Show the user the parts that fix the problem with links to the parts
+7. Utilize the data_agent to get any other repair instructions and tips
+
+validation_agent:
+If the user is trying to see if a part is compatible with a model, you must ask the user for the model number and part number.
+If either the model number or part number is incorrect, you may provide suggestions for the correct model number or part number - only using the knowledge provided.
+
+
 --- 
 Output:
-Only output the response, no other text. Do NOT use any knowledge of PartSelect or external websites outside of the information provided in the conversation.
+Only output the response, no other text. 
 """
 
 human_interaction_agent = create_react_agent(
@@ -25,24 +43,12 @@ human_interaction_agent = create_react_agent(
     tools=[]
 )
 
-def format_messages_for_llm(messages: List[Dict[str, str]]) -> List[Dict[str, Any]]:
-    """Convert messages to LangChain format."""
-    formatted = []
-    for msg in messages:
-        if msg["role"] == "system":
-            formatted.append(SystemMessage(content=msg["content"]))
-        elif msg["role"] == "user":
-            formatted.append(HumanMessage(content=msg["content"]))
-        elif msg["role"] == "assistant":
-            formatted.append(AIMessage(content=msg["content"], name=msg.get("name")))
-    return formatted
 
 def human_interaction_node(state: State) -> Command[str]:
     try:
         logger.debug(f"State in human_interaction_node: {state}")
         
-        # Format messages for LLM
-        # formatted_messages = format_messages_for_llm(messages)
+
         
         # Generate response
         if state.get("pending_request"):
@@ -56,7 +62,8 @@ def human_interaction_node(state: State) -> Command[str]:
         return Command(
             goto="supervisor",
             update={
-                "messages": response["messages"]
+                "messages": response["messages"],
+                "pending_request": None
             }
         )
         

@@ -1,10 +1,9 @@
 from typing import Dict, Any, List
 from langgraph.types import Command
-from .types import prebuilt_llm, State, MessageSummary
+from .types import prebuilt_llm, State
 from firebase_functions import logger
 from langgraph.prebuilt import create_react_agent
-from .agent_utils import process_agent_node, convert_dict_to_langchain_messages
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, BaseMessage
+from langchain_core.messages import HumanMessage, BaseMessage
 
 system_message = """You are a conversation summary agent for PartSelect's customer service system. Your role is to:
 1. Summarize the conversation history concisely
@@ -39,46 +38,10 @@ summary_agent = create_react_agent(
     tools=[],
 )
 
-def process_summary_responses(responses: Dict[str, Any], messages: List[BaseMessage]) -> str:
-    """Process direct requests for summary."""
-    process_messages = messages.copy()
-    
-    # Process and clean up responses
-    request = [req for req in responses if req.startswith("summary_agent_")][0]
-    process_messages.append(HumanMessage(content=responses[request]))
-    responses.pop(request)
-    
-    return summary_agent.invoke(process_messages)
-
-def process_no_responses(messages: List[BaseMessage]) -> str:
-    """Process when there are no direct requests."""
-    analysis_messages = messages + [
-        HumanMessage(content="Please analyze the conversation history between the USER and the AGENT and provide a structured summary. Ignore system messages.")
-    ]
-    
-    return summary_agent.invoke(analysis_messages)
-
 def summary_agent_node(state: State) -> Command[str]:
-    # Remove half of the first messages to keep context manageable
-    state["messages"] = state["messages"][len(state["messages"]) // 2:]
-    
-    # Process the request and get response
-    result = process_agent_node(
-        state=state,
-        agent_name="summary_agent",
-        agent_llm=summary_agent,
-        system_message=system_message,
-        process_responses=process_summary_responses,
-        process_no_responses=process_no_responses,
-        default_next_agent="supervisor"
-    )
-    
-    # Always return to supervisor with updated state
-    return Command(
-        goto="supervisor",
-        update={
-            "messages": result.update["messages"],
-            "agent_requests": state.get("agent_requests", []),  # Summary agent doesn't create new requests
-            "agent_responses": result.update.get("agent_responses", {})
-        }
-    ) 
+    try:
+        response = summary_agent.invoke(state)
+        return Command(goto="supervisor", update={"messages": state["messages"] + [AIMessage(content=str(response))]})
+    except Exception as e:
+        logger.error(f"Error in summary_agent_node: {str(e)}")
+        raise
