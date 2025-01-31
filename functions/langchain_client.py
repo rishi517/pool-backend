@@ -47,7 +47,7 @@ def get_llm_response(messages):
 
         chunks = []
         output = "I'm sorry, I'm not sure what you're asking for. Please try again."
-        
+        output_image = None
         try:
             logger.debug("Processing chunks")
             for chunk in response:
@@ -61,11 +61,13 @@ def get_llm_response(messages):
                         if messages and isinstance(messages[-1], AIMessage):
                             output = messages[-1].content
                             logger.debug(f"New output: {output}")
+                if "output_image" in chunk:
+                    output_image = chunk["output_image"]
+                    logger.debug(f"New output image: {output_image}")
         except Exception as e:
             logger.error(f"Failed to process chunks: {str(e)}")
             raise
-
-        return output
+        return output, output_image
         
     except Exception as e:
         logger.error(f"Error in get_llm_response: {str(e)}")

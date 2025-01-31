@@ -6,30 +6,20 @@ from typing_extensions import TypedDict
 import os
 
 prebuilt_llm = ChatOpenAI(
-    model="gpt-4o-mini",
+    model="gpt-4o",
     api_key=os.getenv("OPENAI_API_KEY"),
     temperature=0
 )
-agents = Literal["human_interaction", "validation_agent", "repair_agent", "data_agent", "blog_agent"]
+agents = Literal["human_interaction", "product_agent", "store_agent", "store_search_agent", "store_info_agent"]
 # Define valid agent interactions
 VALID_AGENT_REQUESTS = {
     "human_interaction": [],
-    "validation_agent": ["data_agent"],
-    "repair_agent": ["validation_agent", "data_agent", "human_interaction"],
-    "data_agent": ["human_interaction"],
-    "blog_agent": ["human_interaction", "data_agent"]
+    "product_search_agent": ["human_interaction"],
+    "product_info_agent": ["product_search_agent", "store_search_agent", "store_info_agent", "human_interaction"],
+    "store_search_agent": ["human_interaction"],
+    "store_info_agent": ["store_search_agent", "product_search_agent", "product_info_agent", "human_interaction"]
 }
 
-    
-class MessageSummary(TypedDict):
-    part_numbers: Optional[List[str]] = Field(..., description="A list of part numbers that have been mentioned")
-    model_numbers: Optional[List[str]] = Field(..., description="A list of model numbers that have been mentioned")
-    issues_reported: Optional[List[str]] = Field(..., description="A list of issues that have been reported")
-    validated_info: Optional[List[str]] = Field(..., description="A list of information that has been validated")
-    repair_suggestions: Optional[List[str]] = Field(..., description="A list of repair suggestions that have been made")
-    pending_questions: Optional[List[str]] = Field(..., description="A list of questions that are still pending")
-    current_state: Optional[str] = Field(..., description="The current state of the conversation")
-    conversation_summary: Optional[str] = Field(..., description="A summary of the conversation so far")
 
 class Message(TypedDict):
     role: Literal["system", "user", "assistant"] = Field(..., description="The role of the message sender")
@@ -47,28 +37,52 @@ class AgentResponse(TypedDict):
     requesting_agent: agents = Field(..., description="The agent that made the request")
     response_data: Dict[str, Any] = Field(..., description="The response data")
 
-class ValidationInfo(TypedDict):
-    answer: str = Field(..., description="The answer to the validation question")
-    found_item: Optional[str] = Field(..., description="a description of the item found, only set if we are searching for a part or model")
-    item_suggestions: Optional[List[str]] = Field(..., description="A list of suggestions for the user to provide a part number or model number if the item was not found")
-    info_needed: Optional[AgentRequest] = Field(..., description="Set to None if all information is provided, otherwise set to the request needed")
-
-class RepairInfo(TypedDict):
-    provided_model_number: bool = Field(..., description="Whether the user has provided a model number")
-    list_of_problems: List[str] = Field(..., description="A list of common problems that the user may be experiencing, only filled if the user has provided a model number")
-    provided_problem: Optional[str] = Field(..., description="The problem that the user has provided, only filled if the user has provided a model number")
-    list_of_parts: List[str] = Field(..., description="A list of parts that are needed to fix the problem, only filled if the user has provided a problem")
-    info_needed: Optional[AgentRequest] = Field(..., description="Set to None if all information is provided, otherwise set to the request needed")
+class AgentStructuredResponse(TypedDict):
+    child_agent_response: Optional[AgentResponse] = Field(default=None, description="The response from the child agent")
+    pending_request: Optional[AgentRequest] = Field(default=None, description="The pending request from the child agent")
     
-    
-
 class State(TypedDict):
     messages: List[Message] = Field(..., description="The conversation messages")
     current_agent: str = Field(..., description="The currently active agent")
     pending_request: Optional[AgentRequest] = Field(default=None, description="Pending agent request")
-    conversation_state: Dict[str, Any] = Field(default_factory=dict, description="Current state of the conversation")
+    agent_scratchpad: Optional[str] = Field(default="", description="The scratchpad of the agent that made the request")
+    output_image: Optional[str] = Field(default=None, description="The image to be displayed to the user, as a URL")
 
-class BlogInfo(TypedDict):
+class Product(TypedDict):
+    name: str = Field(..., description="The name of the product")
+    part_number: Optional[str] = Field(default=None, description="The part number of the product")
+    manufacturer_number: Optional[str] = Field(default=None, description="The model number of the product")
+    price: Optional[str] = Field(default=None, description="The price of the product")
+    image_url: Optional[str] = Field(default=None, description="The URL of the product image")
+    additional_info: Optional[str] = Field(default=None, description="Additional information about the product")
+    description: Optional[str] = Field(default=None, description="The description of the product")
+
+class ProductList(AgentStructuredResponse):
+    products: List[Product] = Field(default_factory=list, description="List of relevant products found")
+
+class ProductInfo(AgentStructuredResponse):
     search_query: Optional[str] = Field(default=None, description="The search query provided by the user")
-    found_articles: List[str] = Field(default_factory=list, description="List of relevant articles found")
+    found_products: List[Product] = Field(default_factory=list, description="List of relevant products found")
+    suggested_response: Optional[str] = Field(default=None, description="A suggested response to the user, based on the search query")
     info_needed: Optional[AgentRequest] = Field(default=None, description="Set to None if all information is provided, otherwise set to the request needed")
+    
+class Store(TypedDict):
+    name: str = Field(..., description="The name of the store")
+    longitude: Optional[float] = Field(default=None, description="The longitude of the store")
+    latitude: Optional[float] = Field(default=None, description="The latitude of the store")
+    phone_number: Optional[str] = Field(default=None, description="The phone number of the store")
+    website_url: Optional[str] = Field(default=None, description="The website URL of the store")
+
+class StoreList(AgentStructuredResponse):
+    found_stores: List[Store] = Field(default_factory=list, description="List of relevant stores found")
+
+class StoreInfo(AgentStructuredResponse):
+    search_query: Optional[str] = Field(default=None, description="The search query provided by the user")
+    found_stores: List[Store] = Field(default_factory=list, description="List of relevant stores found")
+    suggested_response: Optional[str] = Field(default=None, description="A suggested response to the user, based on the search query")
+    info_needed: Optional[AgentRequest] = Field(default=None, description="Set to None if all information is provided, otherwise set to the request needed")
+    
+    
+class FinalOutput(TypedDict):
+    message: List[Message] = Field(..., description="The conversation messages")
+    output_image: Optional[str] = Field(default=None, description="The image to be displayed to the user, as a URL")

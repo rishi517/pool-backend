@@ -4,45 +4,47 @@ from typing_extensions import TypedDict
 from langgraph.graph import END, StateGraph, START
 from langgraph.types import Command
 
-from .blog_agent import blog_agent_node
-from .repair_agent import repair_agent_node
-from .validation_agent import validation_agent_node
+from .product_search_agent import product_search_agent_node
+from .product_info_agent import product_info_agent_node
+from .store_search_agent import store_search_agent_node
+from .store_info_agent import store_info_agent_node
 from lib.types import prebuilt_llm, State, VALID_AGENT_REQUESTS, AgentRequest
 from firebase_functions import logger
 from .human_interaction_agent import human_interaction_node
-from .data_agent import data_agent_node
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from pydantic import Field
 
 # Define our possible routes
-members = Literal["repair_agent", "validation_agent", "human_interaction", "data_agent", "blog_agent"]
-options = Literal["repair_agent", "validation_agent", "human_interaction", "data_agent", "blog_agent", "end"]
-supervisor_options = Literal["repair_agent", "validation_agent", "human_interaction", "data_agent", "blog_agent", "__end__"]
+
+supervisor_options = Literal["human_interaction", "product_search_agent", "product_info_agent", "store_search_agent", "store_info_agent", "end"]
 
 class Router(TypedDict):
-    next_agent: Literal["repair_agent", "validation_agent", "human_interaction", "data_agent", "blog_agent", "end"]
+    next_agent: Literal["human_interaction", "product_search_agent", "product_info_agent", "store_search_agent", "store_info_agent", "end"]
     request_type: Optional[str] = Field(default="analyze", description="The type of request being made")
     request_info: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Information for the target agent to process the request")
 
-system_prompt = """You are the workflow coordinator for PartSelect's customer service system. 
+system_prompt = """You are the workflow coordinator for Heritage Pool Plus's Pool Equipment Chat Agent. 
+This chatbot handles user queries related to pool equipment, store details, and product information. The assistant must be able to determine the best way to
+retrieve relevant data by interacting with multiple APIs and structuring responses in a way that's useful to the user.      
+
 You must accurately and quickly triage the conversation to the correct agent. Keep the number of steps to a minimum.
+
 Your role is to analyze conversations and determine which specialized agent should handle the next step:
 
-___ EVERY TIME YOU ANSWER A PROMPT, YOU MUST THINK ABOUT ALL THE STEPS YOU WILL TAKE TO SOLVE THE PROBLEM. ____
-
-1. validation_agent: Validates part/model numbers and checks compatibility. There is no need to validate data you got from other agents, and only validate individual parts and models if the user wants to.
-    Only call this for compatibility if you have both a part and model number. If you think you need to validate a part or model, ask the user for the part or model number.
-2. repair_agent: Provides repair solutions and part recommendations. Use this agent when the user mentions a problem and you need to provide a solution.
-3. data_agent: Fetches product data and specifications. You cannot request this agent unless another agent has requested it. You cannot request this agent individually.
-4. blog_agent: Searches blog posts for general information and tips. Use this agent when the user asks general questions about appliance maintenance, common issues, or best practices for dishwasher and refrigerator repair.
-5. human_interaction: Communicates directly with the user (MUST be the final step). 
+1. human_interaction: Communicates directly with the user (MUST be the final step). 
     Use this agent if you need more information from the user not provided by the other agents. It is better to ask the user for information than to assume which action to take.
+
+2. product_search_agent: The product search expert. Use this agent if the user is asking about product information, but you don't know which product they are referring to.
+
+3. product_info_agent: The specific product expert. Use this agent if the user is asking about product information, and you know which product they are referring to.
+
+4. store_search_agent: The store search expert. Use this agent if the user is asking about store information, but you don't know which store they are referring to.
+
+5. store_info_agent: The specific store expert. Use this agent if the user is asking about store information, and you know which store they are referring to.
 
 Rules:
 1. ALWAYS end with human_interaction for user communication
 2. When analyzing the output of an agent, look for a request. If the request must be fulfilled by the user, route to human_interaction.
-3. Use blog_agent for general questions that don't require specific model numbers or parts
-4. Use repair_agent when the user has a specific problem that needs fixing
 
 Your response must be a JSON object with:
 {
@@ -50,6 +52,8 @@ Your response must be a JSON object with:
     "request_type": string,  // What you need from the agent
     "request_info": object   // Data needed for the request
 }
+
+If a user query does not relate to pool equipment, store details, or product information, then route to human_interaction with request_info including "This is not a relevant question"
 """
 
 def validate_agent_request(request: AgentRequest) -> bool:
@@ -156,12 +160,14 @@ def build_supervisor_graph():
     # Add nodes
     builder.add_node("supervisor", supervisor_node)
     builder.add_node("human_interaction", human_interaction_node)
-    builder.add_node("repair_agent", repair_agent_node)
-    builder.add_node("validation_agent", validation_agent_node)
-    builder.add_node("data_agent", data_agent_node)
-    builder.add_node("blog_agent", blog_agent_node)
+    builder.add_node("product_search_agent", product_search_agent_node)
+    builder.add_node("product_info_agent", product_info_agent_node)
+    builder.add_node("store_search_agent", store_search_agent_node)
+    builder.add_node("store_info_agent", store_info_agent_node)
     # START always goes to supervisor
     builder.add_edge(START, "supervisor")
+    
+    
     
 
     
