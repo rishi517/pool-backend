@@ -12,7 +12,7 @@ load_dotenv()
 def get_llm_response(messages):
     try:
         # Convert incoming messages to LangChain format
-        logger.debug("Converting messages to langchain format")
+        logger.debug(f"Converting messages to langchain format: {messages}")
         try:
             langchain_messages = convert_dict_to_langchain_messages(messages)
             logger.debug("Messages converted successfully")

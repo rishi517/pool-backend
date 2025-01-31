@@ -9,3 +9,5 @@ langchain
 langchain-openai
 langchain-community
 langgraph
+twilio
+requests
