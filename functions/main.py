@@ -57,7 +57,7 @@ def whatsapp_webhook(request):
         logger.info(messages)
     
         llm_response, output_image = get_llm_response(messages + [{"role": "user", "content": user_input}])
-        logger.info(output_image)
+        logger.info(llm_response, output_image)
         if output_image:
             twilio_client.messages.create(
                 to=rishi_phone_number,
@@ -73,7 +73,7 @@ def whatsapp_webhook(request):
             )
             
             
-        
+        logger.info(f"PRINTING FINAL OUTPUT")
         logger.info(llm_response)
 
     time.sleep(15)
